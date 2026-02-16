@@ -1,0 +1,71 @@
+name: Monthly Investor Update
+
+on:
+  schedule:
+    # Outreach: 25th at 2pm UTC (9am ET)
+    - cron: '0 14 25 * *'
+    # Nudge: 27th at 2pm UTC
+    - cron: '0 14 27 * *'
+    # Escalate: 28th at 2pm UTC
+    - cron: '0 14 28 * *'
+    # Draft: 29th at 2pm UTC
+    - cron: '0 14 29 * *'
+    # Deliver: 30th at 2pm UTC
+    - cron: '0 14 30 * *'
+  workflow_dispatch:
+    inputs:
+      step:
+        description: 'Step to run manually'
+        required: true
+        type: choice
+        options:
+          - outreach
+          - check
+          - nudge
+          - escalate
+          - draft
+          - deliver
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine step
+        id: step
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "step=${{ github.event.inputs.step }}" >> $GITHUB_OUTPUT
+          else
+            DAY=$(date -u +%d)
+            case $DAY in
+              25) echo "step=outreach" >> $GITHUB_OUTPUT ;;
+              27) echo "step=nudge" >> $GITHUB_OUTPUT ;;
+              28) echo "step=escalate" >> $GITHUB_OUTPUT ;;
+              29) echo "step=draft" >> $GITHUB_OUTPUT ;;
+              30) echo "step=deliver" >> $GITHUB_OUTPUT ;;
+              *) echo "step=check" >> $GITHUB_OUTPUT ;;
+            esac
+          fi
+
+      - name: Run agent
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python agent.py --step ${{ steps.step.outputs.step }}
+
+      - name: Save state
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly-state
+          path: data/
+          retention-days: 45
